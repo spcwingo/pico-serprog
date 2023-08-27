@@ -4,6 +4,8 @@ Slightly less terrible serprog implementation for the Raspberry Pi Pico and
 possibly other RP2040 based boards. Based on pico-serprog by GitHub user
 "stacksmashing". Further improved by "kukrimate".
 
+This takes about 17 seconds to read the 8MiB BIOS chip of an X200.
+
 Pinout for the SPI lines:
 | Pin | Function |
 |-----|----------|
