@@ -9,10 +9,12 @@ This takes about 17 seconds to read the 8MiB BIOS chip of an X200.
 Pinout for the SPI lines:
 | Pin | Function |
 |-----|----------|
-| GP5 | CS       |
-| GP4 | MISO     |
-| GP3 | MOSI     |
-| GP2 | SCK      |
+|  7  | CS       |
+|  6  | MISO     |
+|  5  | MOSI     |
+|  4  | SCK      |
+
+![Pico pinout](pinout.png)
 
 ## Compiling
 
@@ -52,4 +54,10 @@ flashrom -p serprog:dev=/dev/ttyACMx,spispeed=32M -w flash.bin
 
 As a lot of the code itself was heavily inspired/influenced by `stm32-vserprog`
 this code is licensed under GPLv3.
+
+pinout.png is based on
+[pico-pinout.svg](https://www.raspberrypi.com/documentation/microcontrollers/images/pico-pinout.svg)
+by Raspberry Pi Ltd, under the
+[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
+license.
 
