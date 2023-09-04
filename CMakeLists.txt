@@ -7,5 +7,5 @@ pico_sdk_init()
 
 add_executable(pico_serprog)
 target_sources(pico_serprog PRIVATE main.c usb_descriptors.c)
-target_link_libraries(pico_serprog PRIVATE pico_stdlib hardware_spi tinyusb_device)
+target_link_libraries(pico_serprog PRIVATE pico_stdlib pico_unique_id hardware_spi tinyusb_device)
 pico_add_extra_outputs(pico_serprog)
