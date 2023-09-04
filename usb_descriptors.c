@@ -158,11 +158,11 @@ char board_serial[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1];
 // array of pointer to string descriptors
 const char* const string_desc_arr [] =
 {
-  (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-  "libreboot.org",         // 1: Manufacturer
-  "pico-serprog",          // 2: Product
-  board_serial,            // 3: Serial, should use chip ID
-  "serprog",               // 4: CDC Interface
+  (const char[]) { 0x09, 0x04 },      // 0: is English language
+  "libreboot.org",                    // 1: Manufacturer
+  "pico-serprog (" PICO_BOARD ")",    // 2: Product
+  board_serial,                       // 3: Serial number filled later
+  "serprog",                          // 4: CDC Interface
 };
 
 static uint16_t _desc_str[32];
