@@ -10,7 +10,11 @@
  * 
  */
 
+#define DESCRIPTION "SPI flash chip programmer using Flashrom's serprog protocol"
+#define WEBSITE "https://codeberg.org/Riku_V/pico-serprog/"
+
 #include "pico/stdlib.h"
+#include "pico/binary_info.h"
 #include "hardware/spi.h"
 #include "tusb.h"
 #include "serprog.h"
@@ -259,6 +263,15 @@ static void command_loop(void)
 
 int main()
 {
+    // Metadata for picotool
+    bi_decl(bi_program_description(DESCRIPTION));
+    bi_decl(bi_program_url(WEBSITE));
+    bi_decl(bi_1pin_with_name(PIN_LED, "Activity LED"));
+    bi_decl(bi_1pin_with_name(SPI_MISO, "MISO"));
+    bi_decl(bi_1pin_with_name(SPI_MOSI, "MOSI"));
+    bi_decl(bi_1pin_with_name(SPI_SCK, "SCK"));
+    bi_decl(bi_1pin_with_name(SPI_CS, "CS"));
+
     // Setup USB
     tusb_init();
     // Setup PL022 SPI
