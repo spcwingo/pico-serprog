@@ -1,5 +1,6 @@
 /**
  * Copyright (C) 2021, Mate Kukri <km@mkukri.xyz>
+ * Copyright (C) 2023, Riku Viitanen <riku.viitanen@protonmail.com>
  * Based on "pico-serprog" by Thomas Roth <code@stacksmashing.net>
  * 
  * Licensed under GPLv3
@@ -23,8 +24,15 @@
 #define SPI_MOSI    3
 #define SPI_SCK     2
 
+#define PIN_LED	    PICO_DEFAULT_LED_PIN
+
+
 static void enable_spi(uint baud)
 {
+    // Setup status LED
+    gpio_init(PIN_LED);
+    gpio_set_dir(PIN_LED, GPIO_OUT);
+
     // Setup chip select GPIO
     gpio_init(SPI_CS);
     gpio_put(SPI_CS, 1);
@@ -117,127 +125,135 @@ static inline void sendbyte_blocking(uint8_t b)
     tud_cdc_n_write(CDC_ITF, &b, 1);
 }
 
+static void process_command(uint8_t cmd, uint *baud) {
+    switch (cmd) {
+    case S_CMD_NOP:
+        sendbyte_blocking(S_ACK);
+        break;
+    case S_CMD_Q_IFACE:
+        sendbyte_blocking(S_ACK);
+        sendbyte_blocking(0x01);
+        sendbyte_blocking(0x00);
+        break;
+    case S_CMD_Q_CMDMAP:
+        {
+            static const uint32_t cmdmap[8] = {
+                (1 << S_CMD_NOP)       |
+                  (1 << S_CMD_Q_IFACE)   |
+                  (1 << S_CMD_Q_CMDMAP)  |
+                  (1 << S_CMD_Q_PGMNAME) |
+                  (1 << S_CMD_Q_SERBUF)  |
+                  (1 << S_CMD_Q_BUSTYPE) |
+                  (1 << S_CMD_SYNCNOP)   |
+                  (1 << S_CMD_O_SPIOP)   |
+                  (1 << S_CMD_S_BUSTYPE) |
+                  (1 << S_CMD_S_SPI_FREQ)|
+                  (1 << S_CMD_S_PIN_STATE)
+            };
+
+            sendbyte_blocking(S_ACK);
+            sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
+            break;
+        }
+    case S_CMD_Q_PGMNAME:
+        {
+            static const char progname[16] = "pico-serprog";
+
+            sendbyte_blocking(S_ACK);
+            sendbytes_blocking(progname, sizeof progname);
+            break;
+        }
+    case S_CMD_Q_SERBUF:
+        sendbyte_blocking(S_ACK);
+        sendbyte_blocking(0xFF);
+        sendbyte_blocking(0xFF);
+        break;
+    case S_CMD_Q_BUSTYPE:
+        sendbyte_blocking(S_ACK);
+        sendbyte_blocking((1 << 3)); // BUS_SPI
+        break;
+    case S_CMD_SYNCNOP:
+        sendbyte_blocking(S_NAK);
+        sendbyte_blocking(S_ACK);
+        break;
+    case S_CMD_S_BUSTYPE:
+        // If SPI is among the requsted bus types we succeed, fail otherwise
+        if((uint8_t) readbyte_blocking() & (1 << 3))
+            sendbyte_blocking(S_ACK);
+        else
+            sendbyte_blocking(S_NAK);
+        break;
+    case S_CMD_O_SPIOP:
+        {
+            static uint8_t buf[4096];
+
+            uint32_t wlen = 0;
+            readbytes_blocking(&wlen, 3);
+            uint32_t rlen = 0;
+            readbytes_blocking(&rlen, 3);
+
+            cs_select(SPI_CS);
+
+            while (wlen) {
+                uint32_t cur = MIN(wlen, sizeof buf);
+                readbytes_blocking(buf, cur);
+                spi_write_blocking(SPI_IF, buf, cur);
+                wlen -= cur;
+            }
+
+            sendbyte_blocking(S_ACK);
+
+            while (rlen) {
+                uint32_t cur = MIN(rlen, sizeof buf);
+                spi_read_blocking(SPI_IF, 0, buf, cur);
+                sendbytes_blocking(buf, cur);
+                rlen -= cur;
+            }
+
+            cs_deselect(SPI_CS);
+        }
+        break;
+    case S_CMD_S_SPI_FREQ:
+        {
+            uint32_t want_baud;
+            readbytes_blocking(&want_baud, 4);
+            if (want_baud) {
+                // Set frequence
+                *baud = spi_set_baudrate(SPI_IF, want_baud);
+                // Send back actual value
+                sendbyte_blocking(S_ACK);
+                sendbytes_blocking(baud, 4);
+            } else {
+                // 0 Hz is reserved
+                sendbyte_blocking(S_NAK);
+            }
+            break;
+        }
+    case S_CMD_S_PIN_STATE:
+        if (readbyte_blocking())
+            enable_spi(*baud);
+        else
+            disable_spi();
+        sendbyte_blocking(S_ACK);
+        break;
+    default:
+        sendbyte_blocking(S_NAK);
+        break;
+    }
+
+    tud_cdc_n_write_flush(CDC_ITF);
+    gpio_put(PIN_LED, 0);
+}
+
 static void command_loop(void)
 {
     uint baud = spi_get_baudrate(SPI_IF);
 
     for (;;) {
-        switch (readbyte_blocking()) {
-        case S_CMD_NOP:
-            sendbyte_blocking(S_ACK);
-            break;
-        case S_CMD_Q_IFACE:
-            sendbyte_blocking(S_ACK);
-            sendbyte_blocking(0x01);
-            sendbyte_blocking(0x00);
-            break;
-        case S_CMD_Q_CMDMAP:
-            {
-                static const uint32_t cmdmap[8] = {
-                    (1 << S_CMD_NOP)       |
-                      (1 << S_CMD_Q_IFACE)   |
-                      (1 << S_CMD_Q_CMDMAP)  |
-                      (1 << S_CMD_Q_PGMNAME) |
-                      (1 << S_CMD_Q_SERBUF)  |
-                      (1 << S_CMD_Q_BUSTYPE) |
-                      (1 << S_CMD_SYNCNOP)   |
-                      (1 << S_CMD_O_SPIOP)   |
-                      (1 << S_CMD_S_BUSTYPE) |
-                      (1 << S_CMD_S_SPI_FREQ)|
-                      (1 << S_CMD_S_PIN_STATE)
-                };
-
-                sendbyte_blocking(S_ACK);
-                sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
-                break;
-            }
-        case S_CMD_Q_PGMNAME:
-            {
-                static const char progname[16] = "pico-serprog";
-
-                sendbyte_blocking(S_ACK);
-                sendbytes_blocking(progname, sizeof progname);
-                break;
-            }
-        case S_CMD_Q_SERBUF:
-            sendbyte_blocking(S_ACK);
-            sendbyte_blocking(0xFF);
-            sendbyte_blocking(0xFF);
-            break;
-        case S_CMD_Q_BUSTYPE:
-            sendbyte_blocking(S_ACK);
-            sendbyte_blocking((1 << 3)); // BUS_SPI
-            break;
-        case S_CMD_SYNCNOP:
-            sendbyte_blocking(S_NAK);
-            sendbyte_blocking(S_ACK);
-            break;
-        case S_CMD_S_BUSTYPE:
-            // If SPI is among the requsted bus types we succeed, fail otherwise
-            if((uint8_t) readbyte_blocking() & (1 << 3))
-                sendbyte_blocking(S_ACK);
-            else
-                sendbyte_blocking(S_NAK);
-            break;
-        case S_CMD_O_SPIOP:
-            {
-                static uint8_t buf[4096];
-
-                uint32_t wlen = 0;
-                readbytes_blocking(&wlen, 3);
-                uint32_t rlen = 0;
-                readbytes_blocking(&rlen, 3);
-
-                cs_select(SPI_CS);
-
-                while (wlen) {
-                    uint32_t cur = MIN(wlen, sizeof buf);
-                    readbytes_blocking(buf, cur);
-                    spi_write_blocking(SPI_IF, buf, cur);
-                    wlen -= cur;
-                }
-
-                sendbyte_blocking(S_ACK);
-
-                while (rlen) {
-                    uint32_t cur = MIN(rlen, sizeof buf);
-                    spi_read_blocking(SPI_IF, 0, buf, cur);
-                    sendbytes_blocking(buf, cur);
-                    rlen -= cur;
-                }
-
-                cs_deselect(SPI_CS);
-            }
-            break;
-        case S_CMD_S_SPI_FREQ:
-            {
-                uint32_t want_baud;
-                readbytes_blocking(&want_baud, 4);
-                if (want_baud) {
-                    // Set frequence
-                    baud = spi_set_baudrate(SPI_IF, want_baud);
-                    // Send back actual value
-                    sendbyte_blocking(S_ACK);
-                    sendbytes_blocking(&baud, 4);
-                } else {
-                    // 0 Hz is reserved
-                    sendbyte_blocking(S_NAK);
-                }
-                break;
-            }
-        case S_CMD_S_PIN_STATE:
-            if (readbyte_blocking())
-                enable_spi(baud);
-            else
-                disable_spi();
-            sendbyte_blocking(S_ACK);
-            break;
-        default:
-            sendbyte_blocking(S_NAK);
-            break;
-        }
-
-        tud_cdc_n_write_flush(CDC_ITF);
+        uint8_t cmd = readbyte_blocking();
+        gpio_put(PIN_LED, 1);
+        process_command(cmd, &baud);
+        gpio_put(PIN_LED, 0);
     }
 }
 
