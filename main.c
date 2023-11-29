@@ -30,6 +30,23 @@
 
 #define PIN_LED	    PICO_DEFAULT_LED_PIN
 
+static const char progname[16] = "pico-serprog";
+
+/* Map of supported serprog commands */
+static const uint32_t cmdmap[8] = {
+    (1 << S_CMD_NOP)       |
+    (1 << S_CMD_Q_IFACE)   |
+    (1 << S_CMD_Q_CMDMAP)  |
+    (1 << S_CMD_Q_PGMNAME) |
+    (1 << S_CMD_Q_SERBUF)  |
+    (1 << S_CMD_Q_BUSTYPE) |
+    (1 << S_CMD_SYNCNOP)   |
+    (1 << S_CMD_O_SPIOP)   |
+    (1 << S_CMD_S_BUSTYPE) |
+    (1 << S_CMD_S_SPI_FREQ)|
+    (1 << S_CMD_S_PIN_STATE)
+};
+
 
 static void enable_spi(uint baud)
 {
@@ -140,33 +157,13 @@ static void process_command(uint8_t cmd, uint *baud) {
         sendbyte_blocking(0x00);
         break;
     case S_CMD_Q_CMDMAP:
-        {
-            static const uint32_t cmdmap[8] = {
-                (1 << S_CMD_NOP)       |
-                  (1 << S_CMD_Q_IFACE)   |
-                  (1 << S_CMD_Q_CMDMAP)  |
-                  (1 << S_CMD_Q_PGMNAME) |
-                  (1 << S_CMD_Q_SERBUF)  |
-                  (1 << S_CMD_Q_BUSTYPE) |
-                  (1 << S_CMD_SYNCNOP)   |
-                  (1 << S_CMD_O_SPIOP)   |
-                  (1 << S_CMD_S_BUSTYPE) |
-                  (1 << S_CMD_S_SPI_FREQ)|
-                  (1 << S_CMD_S_PIN_STATE)
-            };
-
-            sendbyte_blocking(S_ACK);
-            sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
-            break;
-        }
+        sendbyte_blocking(S_ACK);
+        sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
+        break;
     case S_CMD_Q_PGMNAME:
-        {
-            static const char progname[16] = "pico-serprog";
-
-            sendbyte_blocking(S_ACK);
-            sendbytes_blocking(progname, sizeof progname);
-            break;
-        }
+        sendbyte_blocking(S_ACK);
+        sendbytes_blocking(progname, sizeof progname);
+        break;
     case S_CMD_Q_SERBUF:
         sendbyte_blocking(S_ACK);
         sendbyte_blocking(0xFF);
