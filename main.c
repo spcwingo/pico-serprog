@@ -64,6 +64,11 @@ static void enable_spi(uint baud)
     gpio_set_function(SPI_MISO, GPIO_FUNC_SPI);
     gpio_set_function(SPI_MOSI, GPIO_FUNC_SPI);
     gpio_set_function(SPI_SCK,  GPIO_FUNC_SPI);
+
+    gpio_set_drive_strength(SPI_MISO, GPIO_DRIVE_STRENGTH_12MA);
+    gpio_set_drive_strength(SPI_MOSI, GPIO_DRIVE_STRENGTH_12MA);
+    gpio_set_drive_strength(SPI_SCK,  GPIO_DRIVE_STRENGTH_12MA);
+    gpio_set_drive_strength(SPI_CS,   GPIO_DRIVE_STRENGTH_12MA);
 }
 
 static void disable_spi()
