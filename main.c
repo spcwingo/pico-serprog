@@ -28,8 +28,6 @@
 #define SPI_MOSI    3
 #define SPI_SCK     2
 
-#define PIN_LED	    PICO_DEFAULT_LED_PIN
-
 static const char progname[16] = "pico-serprog";
 
 /* Map of supported serprog commands */
@@ -50,9 +48,11 @@ static const uint32_t cmdmap[8] = {
 
 static void enable_spi(uint baud)
 {
+#ifdef PICO_DEFAULT_LED_PIN
     // Setup status LED
-    gpio_init(PIN_LED);
-    gpio_set_dir(PIN_LED, GPIO_OUT);
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+#endif
 
     // Setup chip select GPIO
     gpio_init(SPI_CS);
@@ -248,7 +248,9 @@ static void process_command(uint8_t cmd, uint *baud) {
     }
 
     tud_cdc_n_write_flush(CDC_ITF);
-    gpio_put(PIN_LED, 0);
+#ifdef PICO_DEFAULT_LED_PIN
+    gpio_put(PICO_DEFAULT_LED_PIN, 0);
+#endif
 }
 
 static void command_loop(void)
@@ -257,9 +259,13 @@ static void command_loop(void)
 
     for (;;) {
         uint8_t cmd = readbyte_blocking();
-        gpio_put(PIN_LED, 1);
+#ifdef PICO_DEFAULT_LED_PIN
+        gpio_put(PICO_DEFAULT_LED_PIN, 1);
+#endif
         process_command(cmd, &baud);
-        gpio_put(PIN_LED, 0);
+#ifdef PICO_DEFAULT_LED_PIN
+        gpio_put(PICO_DEFAULT_LED_PIN, 0);
+#endif
     }
 }
 
@@ -268,7 +274,9 @@ int main()
     // Metadata for picotool
     bi_decl(bi_program_description(DESCRIPTION));
     bi_decl(bi_program_url(WEBSITE));
-    bi_decl(bi_1pin_with_name(PIN_LED, "Activity LED"));
+#ifdef PICO_DEFAULT_LED_PIN
+    bi_decl(bi_1pin_with_name(PICO_DEFAULT_LED_PIN, "Activity LED"));
+#endif
     bi_decl(bi_1pin_with_name(SPI_MISO, "MISO"));
     bi_decl(bi_1pin_with_name(SPI_MOSI, "MOSI"));
     bi_decl(bi_1pin_with_name(SPI_SCK, "SCK"));
