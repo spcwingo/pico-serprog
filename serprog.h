@@ -28,4 +28,6 @@
 #define S_CMD_S_SPI_FREQ	0x14	/* Set SPI clock frequency			*/
 #define S_CMD_S_PIN_STATE	0x15	/* Enable/disable output drivers		*/
 
+#define S_CMD_S_SPI_CS		0x16	/* Select Chip Select to use			*/
+
 #endif

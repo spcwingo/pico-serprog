@@ -1,6 +1,6 @@
 /**
  * Copyright (C) 2021, Mate Kukri <km@mkukri.xyz>
- * Copyright (C) 2023, Riku Viitanen <riku.viitanen@protonmail.com>
+ * Copyright (C) 2023, 2024, Riku Viitanen <riku.viitanen@protonmail.com>
  * Based on "pico-serprog" by Thomas Roth <code@stacksmashing.net>
  * 
  * Licensed under GPLv3
@@ -23,28 +23,41 @@
 
 #define SPI_IF      spi0        // Which PL022 to use
 #define SPI_BAUD    12000000    // Default baudrate (12 MHz)
-#define SPI_CS      5
+#define SPI_CS_0    5		// The default CS pin
 #define SPI_MISO    4
 #define SPI_MOSI    3
 #define SPI_SCK     2
+
+uint8_t spi_enabled = 0;
+uint cs_pin = SPI_CS_0;
+#define NUM_CS_AVAILABLE 4	// Number of usable chip selects
 
 static const char progname[16] = "pico-serprog";
 
 /* Map of supported serprog commands */
 static const uint32_t cmdmap[8] = {
-    (1 << S_CMD_NOP)       |
-    (1 << S_CMD_Q_IFACE)   |
-    (1 << S_CMD_Q_CMDMAP)  |
-    (1 << S_CMD_Q_PGMNAME) |
-    (1 << S_CMD_Q_SERBUF)  |
-    (1 << S_CMD_Q_BUSTYPE) |
-    (1 << S_CMD_SYNCNOP)   |
-    (1 << S_CMD_O_SPIOP)   |
-    (1 << S_CMD_S_BUSTYPE) |
-    (1 << S_CMD_S_SPI_FREQ)|
-    (1 << S_CMD_S_PIN_STATE)
+    (1 << S_CMD_NOP)         |
+    (1 << S_CMD_Q_IFACE)     |
+    (1 << S_CMD_Q_CMDMAP)    |
+    (1 << S_CMD_Q_PGMNAME)   |
+    (1 << S_CMD_Q_SERBUF)    |
+    (1 << S_CMD_Q_BUSTYPE)   |
+    (1 << S_CMD_SYNCNOP)     |
+    (1 << S_CMD_O_SPIOP)     |
+    (1 << S_CMD_S_BUSTYPE)   |
+    (1 << S_CMD_S_SPI_FREQ)  |
+    (1 << S_CMD_S_PIN_STATE) |
+    (1 << S_CMD_S_SPI_CS)
 };
 
+
+static void enable_cs(uint pin)
+{
+    gpio_init(pin);
+    gpio_put(pin, 1);
+    gpio_set_dir(pin, GPIO_OUT);
+    gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_12MA);
+}
 
 static void enable_spi(uint baud)
 {
@@ -54,10 +67,7 @@ static void enable_spi(uint baud)
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 #endif
 
-    // Setup chip select GPIO
-    gpio_init(SPI_CS);
-    gpio_put(SPI_CS, 1);
-    gpio_set_dir(SPI_CS, GPIO_OUT);
+    enable_cs(cs_pin);
 
     // Setup PL022
     spi_init(SPI_IF, baud);
@@ -68,25 +78,39 @@ static void enable_spi(uint baud)
     gpio_set_drive_strength(SPI_MISO, GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(SPI_MOSI, GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(SPI_SCK,  GPIO_DRIVE_STRENGTH_12MA);
-    gpio_set_drive_strength(SPI_CS,   GPIO_DRIVE_STRENGTH_12MA);
+
+    spi_enabled = 1;
+}
+
+static void disable_pin(uint pin)
+{
+    gpio_init(pin);            // Set pin to SIO input
+    gpio_set_pulls(pin, 0, 0); // Disable all pulls
 }
 
 static void disable_spi()
 {
-    // Set all pins to SIO inputs
-    gpio_init(SPI_CS);
-    gpio_init(SPI_MISO);
-    gpio_init(SPI_MOSI);
-    gpio_init(SPI_SCK);
-
-    // Disable all pulls
-    gpio_set_pulls(SPI_CS, 0, 0);
-    gpio_set_pulls(SPI_MISO, 0, 0);
-    gpio_set_pulls(SPI_MOSI, 0, 0);
-    gpio_set_pulls(SPI_SCK, 0, 0);
+    disable_pin(cs_pin);
+    disable_pin(SPI_MISO);
+    disable_pin(SPI_MOSI);
+    disable_pin(SPI_SCK);
 
     // Disable SPI peripheral
     spi_deinit(SPI_IF);
+
+    spi_enabled = 0;
+}
+
+static void set_cs_pin(uint8_t cs)
+{
+    cs += SPI_CS_0;
+    if (spi_enabled) {
+        if (cs_pin != cs) {
+            disable_pin(cs_pin);
+            enable_cs(cs);
+        }
+    }
+    cs_pin = cs;
 }
 
 static inline void cs_select(uint cs_pin)
@@ -198,7 +222,7 @@ static void process_command(uint8_t cmd, uint *baud) {
             uint32_t rlen = 0;
             readbytes_blocking(&rlen, 3);
 
-            cs_select(SPI_CS);
+            cs_select(cs_pin);
 
             while (wlen) {
                 uint32_t cur = MIN(wlen, sizeof buf);
@@ -216,7 +240,7 @@ static void process_command(uint8_t cmd, uint *baud) {
                 rlen -= cur;
             }
 
-            cs_deselect(SPI_CS);
+            cs_deselect(cs_pin);
         }
         break;
     case S_CMD_S_SPI_FREQ:
@@ -241,6 +265,15 @@ static void process_command(uint8_t cmd, uint *baud) {
         else
             disable_spi();
         sendbyte_blocking(S_ACK);
+        break;
+    case S_CMD_S_SPI_CS:
+        uint8_t cs_index = readbyte_blocking();
+	if (cs_index < NUM_CS_AVAILABLE) {
+            set_cs_pin(cs_index);
+            sendbyte_blocking(S_ACK);
+        } else {
+            sendbyte_blocking(S_NAK);
+        }
         break;
     default:
         sendbyte_blocking(S_NAK);
@@ -280,7 +313,10 @@ int main()
     bi_decl(bi_1pin_with_name(SPI_MISO, "MISO"));
     bi_decl(bi_1pin_with_name(SPI_MOSI, "MOSI"));
     bi_decl(bi_1pin_with_name(SPI_SCK, "SCK"));
-    bi_decl(bi_1pin_with_name(SPI_CS, "CS"));
+    bi_decl(bi_1pin_with_name(SPI_CS_0,   "CS_0 (default)"));
+    bi_decl(bi_1pin_with_name(SPI_CS_0+1, "CS_1"));
+    bi_decl(bi_1pin_with_name(SPI_CS_0+2, "CS_2"));
+    bi_decl(bi_1pin_with_name(SPI_CS_0+3, "CS_3"));
 
     // Setup USB
     tusb_init();
