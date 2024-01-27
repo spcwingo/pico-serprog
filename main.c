@@ -51,12 +51,17 @@ static const uint32_t cmdmap[8] = {
 };
 
 
-static void enable_cs(uint pin)
+static void use_cs(uint pin)
 {
-    gpio_init(pin);
     gpio_put(pin, 1);
     gpio_set_dir(pin, GPIO_OUT);
     gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_12MA);
+}
+
+static void pullup_cs(uint pin)
+{
+    gpio_set_dir(pin, GPIO_IN);
+    gpio_pull_up(pin);
 }
 
 static void enable_spi(uint baud)
@@ -67,7 +72,13 @@ static void enable_spi(uint baud)
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 #endif
 
-    enable_cs(cs_pin);
+    /* Setup default CS as output, others as inputs with pull-ups */
+    for (uint8_t i = SPI_CS_0+1; i<SPI_CS_0+NUM_CS_AVAILABLE; i++) {
+        gpio_init(i);
+        pullup_cs(i);
+    }
+    gpio_init(cs_pin);
+    use_cs(cs_pin);
 
     // Setup PL022
     spi_init(SPI_IF, baud);
@@ -90,7 +101,8 @@ static void disable_pin(uint pin)
 
 static void disable_spi()
 {
-    disable_pin(cs_pin);
+    for (uint8_t i=0; i<NUM_CS_AVAILABLE; i++)
+        disable_pin(SPI_CS_0 + i);
     disable_pin(SPI_MISO);
     disable_pin(SPI_MOSI);
     disable_pin(SPI_SCK);
@@ -106,8 +118,8 @@ static void set_cs_pin(uint8_t cs)
     cs += SPI_CS_0;
     if (spi_enabled) {
         if (cs_pin != cs) {
-            disable_pin(cs_pin);
-            enable_cs(cs);
+            pullup_cs(cs_pin);
+            use_cs(cs);
         }
     }
     cs_pin = cs;
