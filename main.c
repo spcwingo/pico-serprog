@@ -10,7 +10,7 @@
  * 
  */
 
-#define DESCRIPTION "SPI flash chip programmer using Flashrom's serprog protocol"
+#define DESCRIPTION "SPI flash chip programmer using Flashprog's serprog protocol"
 #define WEBSITE "https://codeberg.org/Riku_V/pico-serprog/"
 
 #include "pico/stdlib.h"

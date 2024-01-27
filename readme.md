@@ -42,12 +42,19 @@ containing something like this will appear:
 Read chip:
 
 ```
-flashrom -p serprog:dev=/dev/ttyACMx,spispeed=32M -r flash.bin
+flashprog -p serprog:dev=/dev/ttyACMx,spispeed=32M -r flash.bin
 ```
 
 Write chip:
 ```
-flashrom -p serprog:dev=/dev/ttyACMx,spispeed=32M -w flash.bin
+flashprog -p serprog:dev=/dev/ttyACMx,spispeed=32M -w flash.bin
+```
+
+Multiple chips can be connected at the same time. Pins GP5-GP8 are Chip
+Selects 0-3, respectively. The firmware defaults to using Chip Select 0.
+```
+flashprog -p serprog:dev=/dev/ttyACMx,cs=0 -r chip0.bin
+flashprog -p serprog:dev=/dev/ttyACMx,cs=1 -r chip1.bin
 ```
 
 ## License
