@@ -22,7 +22,6 @@
 #define CDC_ITF     0           // USB CDC interface no
 
 #define SPI_IF      spi0        // Which PL022 to use
-#define SPI_BAUD    12000000    // Default baudrate (12 MHz)
 #define SPI_CS_0    5		// The default CS pin
 #define SPI_MISO    4
 #define SPI_MOSI    3
@@ -31,6 +30,8 @@
 uint8_t spi_enabled = 0;
 uint cs_pin = SPI_CS_0;
 #define NUM_CS_AVAILABLE 4	// Number of usable chip selects
+
+uint baud = 12000000; /* Default to 12MHz */
 
 static const char progname[16] = "pico-serprog";
 
@@ -64,7 +65,7 @@ static void pullup_cs(uint pin)
     gpio_pull_up(pin);
 }
 
-static void enable_spi(uint baud)
+static void enable_spi()
 {
 #ifdef PICO_DEFAULT_LED_PIN
     // Setup status LED
@@ -113,17 +114,6 @@ static void disable_spi()
     spi_enabled = 0;
 }
 
-static void set_cs_pin(uint8_t cs)
-{
-    cs += SPI_CS_0;
-    if (spi_enabled) {
-        if (cs_pin != cs) {
-            pullup_cs(cs_pin);
-            use_cs(cs);
-        }
-    }
-    cs_pin = cs;
-}
 
 static inline void cs_select(uint cs_pin)
 {
@@ -187,127 +177,144 @@ static inline void sendbyte_blocking(uint8_t b)
     tud_cdc_n_write(CDC_ITF, &b, 1);
 }
 
-static void process_command(uint8_t cmd, uint *baud) {
-    switch (cmd) {
-    case S_CMD_NOP:
+void s_cmd_s_bustype()
+{
+    // If SPI is among the requsted bus types we succeed, fail otherwise
+    if ((uint8_t) readbyte_blocking() & (1 << 3))
         sendbyte_blocking(S_ACK);
-        break;
-    case S_CMD_Q_IFACE:
-        sendbyte_blocking(S_ACK);
-        sendbyte_blocking(0x01);
-        sendbyte_blocking(0x00);
-        break;
-    case S_CMD_Q_CMDMAP:
-        sendbyte_blocking(S_ACK);
-        sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
-        break;
-    case S_CMD_Q_PGMNAME:
-        sendbyte_blocking(S_ACK);
-        sendbytes_blocking(progname, sizeof progname);
-        break;
-    case S_CMD_Q_SERBUF:
-        sendbyte_blocking(S_ACK);
-        sendbyte_blocking(0xFF);
-        sendbyte_blocking(0xFF);
-        break;
-    case S_CMD_Q_BUSTYPE:
-        sendbyte_blocking(S_ACK);
-        sendbyte_blocking((1 << 3)); // BUS_SPI
-        break;
-    case S_CMD_SYNCNOP:
+    else
         sendbyte_blocking(S_NAK);
-        sendbyte_blocking(S_ACK);
-        break;
-    case S_CMD_S_BUSTYPE:
-        // If SPI is among the requsted bus types we succeed, fail otherwise
-        if((uint8_t) readbyte_blocking() & (1 << 3))
-            sendbyte_blocking(S_ACK);
-        else
-            sendbyte_blocking(S_NAK);
-        break;
-    case S_CMD_O_SPIOP:
-        {
-            static uint8_t buf[4096];
-
-            uint32_t wlen = 0;
-            readbytes_blocking(&wlen, 3);
-            uint32_t rlen = 0;
-            readbytes_blocking(&rlen, 3);
-
-            cs_select(cs_pin);
-
-            while (wlen) {
-                uint32_t cur = MIN(wlen, sizeof buf);
-                readbytes_blocking(buf, cur);
-                spi_write_blocking(SPI_IF, buf, cur);
-                wlen -= cur;
-            }
-
-            sendbyte_blocking(S_ACK);
-
-            while (rlen) {
-                uint32_t cur = MIN(rlen, sizeof buf);
-                spi_read_blocking(SPI_IF, 0, buf, cur);
-                sendbytes_blocking(buf, cur);
-                rlen -= cur;
-            }
-
-            cs_deselect(cs_pin);
-        }
-        break;
-    case S_CMD_S_SPI_FREQ:
-        {
-            uint32_t want_baud;
-            readbytes_blocking(&want_baud, 4);
-            if (want_baud) {
-                // Set frequence
-                *baud = spi_set_baudrate(SPI_IF, want_baud);
-                // Send back actual value
-                sendbyte_blocking(S_ACK);
-                sendbytes_blocking(baud, 4);
-            } else {
-                // 0 Hz is reserved
-                sendbyte_blocking(S_NAK);
-            }
-            break;
-        }
-    case S_CMD_S_PIN_STATE:
-        if (readbyte_blocking())
-            enable_spi(*baud);
-        else
-            disable_spi();
-        sendbyte_blocking(S_ACK);
-        break;
-    case S_CMD_S_SPI_CS:
-        uint8_t cs_index = readbyte_blocking();
-	if (cs_index < NUM_CS_AVAILABLE) {
-            set_cs_pin(cs_index);
-            sendbyte_blocking(S_ACK);
-        } else {
-            sendbyte_blocking(S_NAK);
-        }
-        break;
-    default:
-        sendbyte_blocking(S_NAK);
-        break;
-    }
-
-    tud_cdc_n_write_flush(CDC_ITF);
-#ifdef PICO_DEFAULT_LED_PIN
-    gpio_put(PICO_DEFAULT_LED_PIN, 0);
-#endif
 }
 
-static void command_loop(void)
+void s_cmd_o_spiop()
 {
-    uint baud = spi_get_baudrate(SPI_IF);
+    static uint8_t buf[4096];
+    uint32_t wlen, rlen;
+    readbytes_blocking(&wlen, 3);
+    readbytes_blocking(&rlen, 3);
 
-    for (;;) {
+    cs_select(cs_pin);
+
+    while (wlen) {
+        uint32_t cur = MIN(wlen, sizeof buf);
+        readbytes_blocking(buf, cur);
+        spi_write_blocking(SPI_IF, buf, cur);
+        wlen -= cur;
+    }
+
+    sendbyte_blocking(S_ACK);
+
+    while (rlen) {
+        uint32_t cur = MIN(rlen, sizeof buf);
+        spi_read_blocking(SPI_IF, 0, buf, cur);
+        sendbytes_blocking(buf, cur);
+        rlen -= cur;
+    }
+
+    cs_deselect(cs_pin);
+}
+
+void s_cmd_s_spi_freq()
+{
+    uint32_t want_baud;
+    readbytes_blocking(&want_baud, 4);
+    if (want_baud) {
+        // Set frequency
+        baud = spi_set_baudrate(SPI_IF, want_baud);
+        // Send back actual value
+        sendbyte_blocking(S_ACK);
+        sendbytes_blocking(&baud, 4);
+    } else {
+        // 0 Hz is reserved
+        sendbyte_blocking(S_NAK);
+    }
+}
+
+void s_cmd_s_pin_state()
+{
+    if (readbyte_blocking())
+        enable_spi();
+    else
+        disable_spi();
+    sendbyte_blocking(S_ACK);
+}
+
+void s_cmd_s_spi_cs()
+{
+    cs = readbyte_blocking();
+    if (cs >= NUM_CS_AVAILABLE)
+        sendbyte_blocking(S_NAK);
+        return;
+
+    cs += SPI_CS_0;
+    if (spi_enabled) {
+        if (cs_pin != cs) {
+            pullup_cs(cs_pin);
+            use_cs(cs);
+        }
+    }
+    cs_pin = cs;
+    sendbyte_blocking(S_ACK);
+}
+
+
+static void command_loop() {
+    while (1) {
         uint8_t cmd = readbyte_blocking();
 #ifdef PICO_DEFAULT_LED_PIN
         gpio_put(PICO_DEFAULT_LED_PIN, 1);
 #endif
-        process_command(cmd, &baud);
+        switch (cmd) {
+        case S_CMD_NOP:
+            sendbyte_blocking(S_ACK);
+            break;
+        case S_CMD_Q_IFACE:
+            sendbyte_blocking(S_ACK);
+            sendbyte_blocking(0x01);
+            sendbyte_blocking(0x00);
+            break;
+        case S_CMD_Q_CMDMAP:
+            sendbyte_blocking(S_ACK);
+            sendbytes_blocking((uint8_t *) cmdmap, sizeof cmdmap);
+            break;
+        case S_CMD_Q_PGMNAME:
+            sendbyte_blocking(S_ACK);
+            sendbytes_blocking(progname, sizeof progname);
+            break;
+        case S_CMD_Q_SERBUF:
+            sendbyte_blocking(S_ACK);
+            sendbyte_blocking(0xFF);
+            sendbyte_blocking(0xFF);
+            break;
+        case S_CMD_Q_BUSTYPE:
+            sendbyte_blocking(S_ACK);
+            sendbyte_blocking((1 << 3)); // BUS_SPI
+            break;
+        case S_CMD_SYNCNOP:
+            sendbyte_blocking(S_NAK);
+            sendbyte_blocking(S_ACK);
+            break;
+        case S_CMD_S_BUSTYPE:
+            s_cmd_s_bustype();
+            break;
+        case S_CMD_O_SPIOP:
+            s_cmd_o_spiop();
+            break;
+        case S_CMD_S_SPI_FREQ:
+            s_cmd_s_spi_freq();
+            break;
+        case S_CMD_S_PIN_STATE:
+            s_cmd_s_pin_state();
+            break;
+        case S_CMD_S_SPI_CS:
+            s_cmd_s_spi_cs();
+            break;
+        default:
+            sendbyte_blocking(S_NAK);
+        }
+
+        tud_cdc_n_write_flush(CDC_ITF);
+
 #ifdef PICO_DEFAULT_LED_PIN
         gpio_put(PICO_DEFAULT_LED_PIN, 0);
 #endif
@@ -333,7 +340,7 @@ int main()
     // Setup USB
     tusb_init();
     // Setup PL022 SPI
-    enable_spi(SPI_BAUD);
+    enable_spi(baud);
 
     command_loop();
 }
