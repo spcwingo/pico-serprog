@@ -223,7 +223,7 @@ void s_cmd_s_pin_state() {
 }
 
 void s_cmd_s_spi_cs() {
-	cs = readbyte_blocking();
+	uint8_t cs = readbyte_blocking();
 	if (cs >= NUM_CS_AVAILABLE)
 		sendbyte_blocking(S_NAK);
 	return;
