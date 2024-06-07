@@ -164,7 +164,7 @@ static inline void sendbyte_blocking(uint8_t b) {
 }
 
 void s_cmd_s_bustype() {
-	/* If SPI is among the requsted bus types we succeed,
+	/* If SPI is among the requested bus types we succeed,
 	 * fail otherwise */
 	if ((uint8_t) readbyte_blocking() & (1 << 3))
 		sendbyte_blocking(S_ACK);
