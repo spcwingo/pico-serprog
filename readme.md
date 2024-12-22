@@ -3,8 +3,8 @@
 Slightly less terrible serprog implementation for the Raspberry Pi Pico and
 other RP2040 based boards. Based on
 pico-serprog by stacksmashing (https://github.com/stacksmashing/pico-serprog/).
-Further improved by kukrimate here(https://github.com/kukrimate/pico-serprog).
-And Riku\_V here (https://codeberg.org/Riku_V/pico-serprog).
+Further improved by kukrimate here(https://github.com/kukrimate/pico-serprog)
+and Riku\_V here (https://codeberg.org/Riku_V/pico-serprog).
 
 Pre-compiled binaries binaries can be downloaded from the
 Libreboot project (https://libreboot.org/download.html#https).
